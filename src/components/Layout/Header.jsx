@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React, { Fragment, useState } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -14,6 +14,13 @@ import { toast } from 'react-toastify';
 const Header = ({ setSidebarOpen }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const [imageError, setImageError] = useState(false);
+
+  // Debug: Log user data
+  React.useEffect(() => {
+    console.log('Header - User data:', user);
+    console.log('Header - Profile picture:', user?.profilePicture);
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -86,9 +93,20 @@ const Header = ({ setSidebarOpen }) => {
           <Menu as="div" className="relative">
             <Menu.Button className="flex items-center gap-x-2 -m-1.5 p-1.5">
               <span className="sr-only">Open user menu</span>
-              <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-sm">
-                {user?.name?.charAt(0).toUpperCase() || 'U'}
-              </div>
+              {user?.profilePicture && !imageError ? (
+                <img
+                  key={user.profilePicture}
+                  src={`http://localhost:5001${user.profilePicture}`}
+                  alt="Profile"
+                  className="h-8 w-8 rounded-full object-cover border-2 border-primary-500"
+                  onError={() => setImageError(true)}
+                  onLoad={() => setImageError(false)}
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-sm">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              )}
               <span className="hidden lg:flex lg:items-center">
                 <span className="text-sm font-semibold text-gray-900" aria-hidden="true">
                   {user?.name || 'User'}

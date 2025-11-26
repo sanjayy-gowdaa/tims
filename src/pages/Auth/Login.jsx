@@ -21,6 +21,7 @@ const Login = () => {
     setLoading(true);
     try {
       const response = await authService.login(data);
+      // Ensure we have the complete user data including profile picture
       login(response.user, response.token);
       toast.success('Login successful!');
       navigate('/dashboard');

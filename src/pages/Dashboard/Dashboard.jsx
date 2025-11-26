@@ -30,7 +30,11 @@ const Dashboard = () => {
         avgResolutionTime: '0h',
         ticketsByCategory: [],
         recentActivity: [],
+        ticketTrends: { labels: [], open: [], inProgress: [], resolved: [] },
       },
+      // Poll dashboard stats every 10 seconds to keep metrics fresh
+      refetchInterval: 10000,
+      refetchOnWindowFocus: true,
     }
   );
 

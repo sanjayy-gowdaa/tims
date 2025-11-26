@@ -66,4 +66,23 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Profile picture upload
+export const uploadProfilePicture = async (file) => {
+  const formData = new FormData();
+  formData.append('profilePicture', file);
+  
+  const response = await apiClient.post('/users/profile/picture', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+// Delete profile picture
+export const deleteProfilePicture = async () => {
+  const response = await apiClient.delete('/users/profile/picture');
+  return response.data;
+};
+
 export default apiClient;

@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { useQuery, useMutation } from 'react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { useAuthStore } from '@/store/authStore';
 import { userService } from '@/services/userService';
+import { uploadProfilePicture, deleteProfilePicture } from '@/services/api';
 import LoadingSpinner from '@/components/Common/LoadingSpinner';
 
 const UserProfile = () => {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateUser, refreshUser } = useAuthStore();
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageTimestamp, setImageTimestamp] = useState(Date.now());
+  const [previewUrl, setPreviewUrl] = useState(null);
 
   const { data: profile, isLoading, refetch } = useQuery('profile', userService.getProfile, {
     initialData: user,
@@ -36,9 +41,97 @@ const UserProfile = () => {
     updateMutation.mutate(data);
   };
 
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.match(/image\/(jpeg|jpg|png|gif)/)) {
+      toast.error('Only image files are allowed (JPEG, PNG, GIF)');
+      return;
+    }
+
+    // Create preview URL immediately
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+
+    try {
+      setUploading(true);
+      console.log('Uploading file:', file.name, 'Size:', file.size, 'bytes');
+      
+      const result = await uploadProfilePicture(file);
+      console.log('Upload result:', result);
+      
+      // Refresh user data from server
+      const updatedUser = await refreshUser();
+      console.log('User data after refresh:', updatedUser);
+      
+      await refetch();
+      
+      // Force image reload with new timestamp
+      setImageTimestamp(Date.now());
+      
+      // Clear preview URL
+      URL.revokeObjectURL(objectUrl);
+      setPreviewUrl(null);
+      
+      // Update local state to force re-render
+      updateUser(updatedUser);
+      
+      toast.success('Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Upload failed:', error);
+      console.error('Error details:', error.response?.data);
+      
+      // Clear preview on error
+      URL.revokeObjectURL(objectUrl);
+      setPreviewUrl(null);
+      
+      toast.error(error.response?.data?.message || 'Failed to upload profile picture');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDeletePicture = async () => {
+    if (!window.confirm('Are you sure you want to delete your profile picture?')) {
+      return;
+    }
+
+    try {
+      console.log('Deleting profile picture...');
+      await deleteProfilePicture();
+      
+      // Refresh user data from server
+      await refreshUser();
+      await refetch();
+      
+      // Force image reload
+      setImageTimestamp(Date.now());
+      
+      toast.success('Profile picture deleted successfully!');
+    } catch (error) {
+      console.error('Delete failed:', error);
+      toast.error('Failed to delete profile picture');
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner />;
   }
+
+  const profilePicUrl = previewUrl || (profile?.profilePicture 
+    ? `http://localhost:5001${profile.profilePicture}?t=${imageTimestamp}` 
+    : null);
 
   return (
     <div className="fade-in max-w-4xl mx-auto">
@@ -53,16 +146,63 @@ const UserProfile = () => {
         {/* Profile Picture */}
         <div className="lg:col-span-1">
           <div className="card text-center">
-            <div className="mb-4">
-              <div className="mx-auto h-32 w-32 rounded-full bg-primary-600 flex items-center justify-center text-white text-4xl font-bold">
-                {profile?.name?.charAt(0).toUpperCase() || 'U'}
-              </div>
+            <div className="mb-4 relative">
+              {profilePicUrl ? (
+                <img
+                  key={`${profile?.profilePicture}-${imageTimestamp}`}
+                  src={profilePicUrl}
+                  alt="Profile"
+                  className="mx-auto h-32 w-32 rounded-full object-cover border-4 border-primary-500 bg-gray-200"
+                  onError={(e) => {
+                    console.error('Image load error:', e);
+                    e.target.style.display = 'none';
+                  }}
+                  onLoad={(e) => {
+                    console.log('Image loaded successfully:', profilePicUrl);
+                  }}
+                />
+              ) : null}
+              {!profilePicUrl && (
+                <div className="mx-auto h-32 w-32 rounded-full bg-primary-600 flex items-center justify-center text-white text-4xl font-bold">
+                  {profile?.name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+              )}
+              {uploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 rounded-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                </div>
+              )}
             </div>
             <h3 className="text-lg font-medium text-gray-900">{profile?.name}</h3>
             <p className="text-sm text-gray-500 capitalize">{profile?.role}</p>
-            <button className="mt-4 btn-secondary w-full">
-              Change Picture
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              accept="image/jpeg,image/jpg,image/png,image/gif"
+              className="hidden"
+            />
+            <button 
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="mt-4 btn-secondary w-full disabled:opacity-50"
+            >
+              {uploading ? 'Uploading...' : 'Change Picture'}
             </button>
+            {profile?.profilePicture && (
+              <button
+                type="button"
+                onClick={handleDeletePicture}
+                disabled={uploading}
+                className="mt-2 btn-danger w-full disabled:opacity-50"
+              >
+                Delete Picture
+              </button>
+            )}
+            <p className="text-xs text-gray-500 mt-2">
+              Max 5MB • JPEG, PNG, GIF
+            </p>
           </div>
         </div>
 

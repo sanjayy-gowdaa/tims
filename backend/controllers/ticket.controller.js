@@ -98,32 +98,48 @@ export const updateTicket = async (req, res, next) => {
       });
     }
 
+    // Extract comment from request body (don't include in ticket update)
+    const { comment, ...updateData } = req.body;
+
     // Add to history
-    if (req.body.status && req.body.status !== ticket.status) {
+    if (updateData.status && updateData.status !== ticket.status) {
       ticket.history.push({
-        description: `Status changed from ${ticket.status} to ${req.body.status}`,
+        description: `Status changed from ${ticket.status} to ${updateData.status}`,
         user: req.user.id,
       });
 
-      if (req.body.status === 'resolved') {
+      if (updateData.status === 'resolved') {
         ticket.resolvedAt = Date.now();
-      } else if (req.body.status === 'closed') {
+      } else if (updateData.status === 'closed') {
         ticket.closedAt = Date.now();
       }
     }
 
-    if (req.body.priority && req.body.priority !== ticket.priority) {
+    if (updateData.priority && updateData.priority !== ticket.priority) {
       ticket.history.push({
-        description: `Priority changed from ${ticket.priority} to ${req.body.priority}`,
+        description: `Priority changed from ${ticket.priority} to ${updateData.priority}`,
+        user: req.user.id,
+      });
+    }
+
+    // Add comment if provided
+    if (comment && comment.trim()) {
+      ticket.comments.push({
+        content: comment,
+        author: req.user.id,
+      });
+
+      ticket.history.push({
+        description: 'Comment added',
         user: req.user.id,
       });
     }
 
     // Update ticket
-    Object.assign(ticket, req.body);
+    Object.assign(ticket, updateData);
     await ticket.save();
 
-    await ticket.populate('createdBy assignedTo', 'name email');
+    await ticket.populate('createdBy assignedTo comments.author', 'name email');
 
     res.status(200).json({
       status: 'success',

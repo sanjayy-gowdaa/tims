@@ -39,6 +39,60 @@ export const getDashboardStats = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(10);
 
+    // Ticket trends for last 7 days (counts per day per status)
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 6);
+    startDate.setHours(0, 0, 0, 0);
+
+    const trendsAgg = await Ticket.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate },
+        },
+      },
+      {
+        $project: {
+          day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          status: 1,
+        },
+      },
+      {
+        $group: {
+          _id: { day: '$day', status: '$status' },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id.day': 1 },
+      },
+    ]);
+
+    // Build labels and datasets
+    const dayMap = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      dayMap[key] = { label: key, open: 0, 'in-progress': 0, resolved: 0 };
+    }
+
+    trendsAgg.forEach((t) => {
+      const day = t._id.day;
+      const status = t._id.status;
+      if (!dayMap[day]) return;
+      if (status === 'open') dayMap[day].open = t.count;
+      else if (status === 'in-progress') dayMap[day]['in-progress'] = t.count;
+      else if (status === 'resolved') dayMap[day].resolved = t.count;
+    });
+
+    const labels = Object.keys(dayMap).map((k) => dayMap[k].label);
+    const ticketTrends = {
+      labels,
+      open: Object.keys(dayMap).map((k) => dayMap[k].open),
+      inProgress: Object.keys(dayMap).map((k) => dayMap[k]['in-progress']),
+      resolved: Object.keys(dayMap).map((k) => dayMap[k].resolved),
+    };
+
     res.status(200).json({
       status: 'success',
       totalTickets,
@@ -47,6 +101,7 @@ export const getDashboardStats = async (req, res, next) => {
       resolvedTickets,
       ticketsByCategory,
       recentActivity,
+      ticketTrends,
     });
   } catch (error) {
     next(error);
